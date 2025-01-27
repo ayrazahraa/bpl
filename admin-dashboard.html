@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Similar styling as before -->
+</head>
+<body>
+    <div class="stats">
+        <h2>Admin Dashboard</h2>
+        <button onclick="window.location.href='form-submission.html'">Back to Form</button>
+        <button onclick="logout()" style="background: #dc3545;">Logout</button>
+    </div>
+
+    <div class="admin-section">
+        <h3>All Submissions</h3>
+        <div id="allSubmissions"></div>
+    </div>
+
+    <div class="admin-section">
+        <h3>User Management</h3>
+        <div id="userList"></div>
+    </div>
+
+    <script>
+        // Firebase initialization
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // Check admin status
+        auth.onAuthStateChanged(async user => {
+            if (!user) {
+                window.location.href = "index.html";
+            } else {
+                const idToken = await user.getIdTokenResult();
+                if(!idToken.claims.admin) {
+                    window.location.href = "form-submission.html";
+                }
+                loadAllData();
+                loadUsers();
+            }
+        });
+
+        async function loadAllData() {
+            const snapshot = await db.collection('submissions').get();
+            const allData = snapshot.docs.map(doc => doc.data());
+            // Render all submissions
+        }
+
+        async function loadUsers() {
+            // You'll need a Cloud Function to get users
+            const users = await firebase.functions().httpsCallable('listUsers')();
+            renderUsers(users.data);
+        }
+
+        function makeAdmin(uid) {
+            firebase.functions().httpsCallable('setAdmin')({uid, admin: true});
+        }
+
+        // Rest of admin functions...
+    </script>
+</body>
+</html>
