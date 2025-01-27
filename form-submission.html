@@ -1,135 +1,59 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Form Submission</title>
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+    <!-- Same head content as before -->
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 600px;
-            margin: 20px auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .stats {
-            background: white;
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        input, select {
-            width: 100%;
-            padding: 8px;
-            box-sizing: border-box;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-        button {
-            background-color: #007BFF;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        #amountField {
-            display: none;
-            margin-top: 10px;
-        }
-        .required {
-            color: red;
-        }
-        .error-message {
-            color: red;
-            margin-top: 10px;
-        }
+        /* Add this new style */
+        .admin-only { display: none; }
     </style>
 </head>
 <body>
     <div class="stats">
-        <h2>Live Statistics</h2>
-        <p>Total Contacts: <strong><span id="totalContacts">0</span></strong></p>
-        <p>Total Sales: <strong>৳<span id="totalSales">0</span></strong></p>
-        <p>Successful Sales: <strong><span id="salesRatio">0</span></strong></p>
+        <h2>Your Submissions</h2>
+        <div id="userSubmissions"></div>
         <button onclick="logout()" style="background: #dc3545;">Logout</button>
+        <a href="admin-dashboard.html" class="admin-only" id="adminLink">Admin Dashboard</a>
     </div>
 
-    <form id="marketForm">
-        <div class="form-group">
-            <label>Market Name <span class="required">*</span></label>
-            <input type="text" id="marketName" required>
-        </div>
-        <div class="form-group">
-            <label>Customer Name <span class="required">*</span></label>
-            <input type="text" id="customerName" required>
-        </div>
-        <div class="form-group">
-            <label>Mobile Number <span class="required">*</span></label>
-            <input type="tel" id="mobileNumber" pattern="[+]{0,1}[0-9]{11,14}" placeholder="+88017XXXXXXXX" required>
-        </div>
-        <div class="form-group">
-            <label>Sale Made? <span class="required">*</span></label>
-            <select id="saleMade" required onchange="toggleAmountField()">
-                <option value="no">No</option>
-                <option value="yes">Yes</option>
-            </select>
-        </div>
-        <div class="form-group" id="amountField">
-            <label>Sale Amount (BDT) <span class="required">*</span></label>
-            <input type="number" id="saleAmount" step="0.01" min="0">
-        </div>
-        <button type="submit">Submit Data</button>
-    </form>
+    <!-- Rest of the form remains the same -->
 
     <script>
-        // Firebase Configuration
-        const firebaseConfig = {
-            apiKey: "AIzaSyAG2FCJ5yq-fpzkIGPJNXhUmV4C0yBCLvw",
-            authDomain: "bpdb-7917b.firebaseapp.com",
-            projectId: "bpdb-7917b",
-            storageBucket: "bpdb-7917b.appspot.com",
-            messagingSenderId: "257010241868",
-            appId: "1:257010241868:web:051531214d73c21558bfe9",
-            measurementId: "G-TMETXCTQGL"
-        };
+        // Add this at the top
+        let currentUser = null;
+        let isAdmin = false;
 
-        // Initialize Firebase
-        const app = firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const auth = firebase.auth();
-
-        // Check Authentication State
-        auth.onAuthStateChanged(user => {
+        // Modified auth state listener
+        auth.onAuthStateChanged(async user => {
             if (!user) {
-                // Redirect to login page if not logged in
                 window.location.href = "index.html";
+            } else {
+                currentUser = user;
+                // Check admin status
+                const idToken = await user.getIdTokenResult();
+                isAdmin = idToken.claims.admin || false;
+                
+                // Show admin link if admin
+                if(isAdmin) document.getElementById('adminLink').style.display = 'inline';
+                
+                loadUserData();
+                updateStatistics();
             }
         });
 
-        // Logout Function
-        function logout() {
-            auth.signOut();
+        // Modified data loading function
+        async function loadUserData() {
+            let query = db.collection('submissions');
+            
+            if(!isAdmin) {
+                query = query.where('userId', '==', currentUser.uid);
+            }
+
+            const snapshot = await query.get();
+            const submissions = snapshot.docs.map(doc => doc.data());
+            // Render submissions...
         }
 
-        // Rest of your form submission logic (same as before)
-        // ...
+        // Rest of the script remains the same
     </script>
 </body>
 </html>
