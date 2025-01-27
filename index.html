@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Market Activation Portal</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+    <style>
+        /* Login Form Styles */
+        .login-container {
+            max-width: 400px;
+            margin: 50px auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        
+        .form-section {
+            display: none;
+        }
+        
+        .active-section {
+            display: block;
+        }
+        
+        /* Rest of your existing styles */
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 20px auto; padding: 20px; }
+        .stats { background: #f5f5f5; padding: 15px; margin-bottom: 20px; border-radius: 8px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, select { 
+            width: 100%; 
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button { 
+            background: #007BFF; 
+            color: white; 
+            padding: 12px 25px;
+            border: none; 
+            border-radius: 4px; 
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        button:hover { background: #0056b3; }
+        #amountField { display: none; margin-top: 10px; }
+        .required { color: red; margin-left: 3px; }
+        .error-message { color: red; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <!-- Login Section -->
+    <div id="loginSection" class="active-section">
+        <div class="login-container">
+            <h2>Staff Login</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="loginEmail" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="loginPassword" required>
+                </div>
+                <button type="submit">Login</button>
+                <div id="loginError" class="error-message"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Form Section (Hidden until login) -->
+    <div id="mainSection" class="form-section">
+        <div class="stats">
+            <h2>Live Statistics</h2>
+            <p>Total Contacts: <strong><span id="totalContacts">0</span></strong></p>
+            <p>Total Sales: <strong>৳<span id="totalSales">0</span></strong></p>
+            <p>Successful Sales: <strong><span id="salesRatio">0</span></strong></p>
+            <button onclick="logout()" style="background: #dc3545; margin-top: 10px;">Logout</button>
+        </div>
+
+        <form id="marketForm">
+            <!-- Your existing form fields here -->
+            <div class="form-group">
+                <label>Market Name <span class="required">*</span></label>
+                <input type="text" id="marketName" required>
+            </div>
+
+            <div class="form-group">
+                <label>Customer Name <span class="required">*</span></label>
+                <input type="text" id="customerName" required>
+            </div>
+
+            <div class="form-group">
+                <label>Mobile Number <span class="required">*</span></label>
+                <input type="tel" id="mobileNumber" 
+                       pattern="[+]{0,1}[0-9]{11,14}" 
+                       placeholder="+88017XXXXXXXX" 
+                       required>
+            </div>
+
+            <div class="form-group">
+                <label>Sale Made? <span class="required">*</span></label>
+                <select id="saleMade" required onchange="toggleAmountField()">
+                    <option value="no">No</option>
+                    <option value="yes">Yes</option>
+                </select>
+            </div>
+
+            <div class="form-group" id="amountField">
+                <label>Sale Amount (BDT) <span class="required">*</span></label>
+                <input type="number" id="saleAmount" step="0.01" min="0">
+            </div>
+
+            <button type="submit">Submit Data</button>
+        </form>
+    </div>
+
+    <script>
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAG2FCJ5yq-fpzkIGPJNXhUmV4C0yBCLvw",
+            authDomain: "bpdb-7917b.firebaseapp.com",
+            projectId: "bpdb-7917b",
+            storageBucket: "bpdb-7917b.firebasestorage.app",
+            messagingSenderId: "257010241868",
+            appId: "1:257010241868:web:051531214d73c21558bfe9",
+            measurementId: "G-TMETXCTQGL"
+        };
+
+        // Initialize Firebase
+        const app = firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        // DOM Elements
+        const loginSection = document.getElementById('loginSection');
+        const mainSection = document.getElementById('mainSection');
+        const loginError = document.getElementById('loginError');
+        const totalContactsSpan = document.getElementById('totalContacts');
+        const totalSalesSpan = document.getElementById('totalSales');
+        const salesRatioSpan = document.getElementById('salesRatio');
+
+        // Authentication State Listener
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                // User is logged in
+                loginSection.classList.remove('active-section');
+                mainSection.classList.add('active-section');
+                updateStatistics();
+            } else {
+                // User is logged out
+                loginSection.classList.add('active-section');
+                mainSection.classList.remove('active-section');
+            }
+        });
+
+        // Login Handler
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            try {
+                await auth.signInWithEmailAndPassword(email, password);
+                loginError.textContent = '';
+            } catch (error) {
+                loginError.textContent = error.message;
+            }
+        });
+
+        // Logout Function
+        function logout() {
+            auth.signOut();
+        }
+
+        // Rest of your existing form functions (toggleAmountField, updateStatistics, form submission)
+        // ... [Include all the previous JavaScript functions from the form here] ...
+        // Toggle Amount Field Visibility
+        function toggleAmountField() {
+            const saleMade = document.getElementById('saleMade').value;
+            const amountField = document.getElementById('amountField');
+            const amountInput = document.getElementById('saleAmount');
+            
+            if(saleMade === 'yes') {
+                amountField.style.display = 'block';
+                amountInput.setAttribute('required', 'true');
+            } else {
+                amountField.style.display = 'none';
+                amountInput.removeAttribute('required');
+                amountInput.value = '';
+            }
+        }
+
+        // Update Statistics
+        function updateStatistics() {
+            db.collection('submissions').get().then((querySnapshot) => {
+                let totalContacts = 0;
+                let totalSalesAmount = 0;
+                let salesCount = 0;
+
+                querySnapshot.forEach((doc) => {
+                    totalContacts++;
+                    if(doc.data().saleMade === 'yes') {
+                        salesCount++;
+                        if(doc.data().saleAmount) {
+                            totalSalesAmount += parseFloat(doc.data().saleAmount);
+                        }
+                    }
+                });
+
+                totalContactsSpan.textContent = totalContacts;
+                totalSalesSpan.textContent = totalSalesAmount.toFixed(2);
+                salesRatioSpan.textContent = salesCount;
+            });
+        }
+
+        // Form Submission Handler
+        document.getElementById('marketForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const submissionData = {
+                marketName: document.getElementById('marketName').value.trim(),
+                customerName: document.getElementById('customerName').value.trim(),
+                mobileNumber: document.getElementById('mobileNumber').value.trim(),
+                saleMade: document.getElementById('saleMade').value,
+                timestamp: new Date(),
+                userId: auth.currentUser.uid // Track which user submitted
+            };
+
+            if(submissionData.saleMade === 'yes') {
+                const amount = parseFloat(document.getElementById('saleAmount').value);
+                if(isNaN(amount) || amount <= 0) {
+                    alert('Please enter a valid sale amount');
+                    return;
+                }
+                submissionData.saleAmount = amount;
+            }
+
+            try {
+                await db.collection('submissions').add(submissionData);
+                alert('Data submitted successfully!');
+                document.getElementById('marketForm').reset();
+                toggleAmountField();
+                updateStatistics();
+            } catch (error) {
+                console.error('Firestore Error:', error);
+                alert('Submission failed. Please check console for details.');
+            }
+        });
+    </script>
+</body>
+</html>
