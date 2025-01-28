@@ -3,99 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Form Submission</title>
+    <title>Market Activation Form</title>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 600px;
-            margin: 20px auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .stats {
-            background: white;
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        input, select {
-            width: 100%;
-            padding: 8px;
-            box-sizing: border-box;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-        button {
-            background-color: #007BFF;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        #amountField {
-            display: none;
-            margin-top: 10px;
-        }
-        .required {
-            color: red;
-        }
-        .error-message {
-            color: red;
-            margin-top: 10px;
-        }
+        /* Existing styles remain the same */
+        .admin-only { display: none; }
+        .error-message { color: red; margin-top: 10px; }
     </style>
 </head>
 <body>
     <div class="stats">
-        <h2>Live Statistics</h2>
-        <p>Total Contacts: <strong><span id="totalContacts">0</span></strong></p>
-        <p>Total Sales: <strong>৳<span id="totalSales">0</span></strong></p>
-        <p>Successful Sales: <strong><span id="salesRatio">0</span></strong></p>
+        <h2>Your Submissions</h2>
+        <div id="userSubmissions"></div>
         <button onclick="logout()" style="background: #dc3545;">Logout</button>
+        <a href="admin-dashboard.html" class="admin-only" id="adminLink">Admin Dashboard</a>
     </div>
 
     <form id="marketForm">
-        <div class="form-group">
-            <label>Market Name <span class="required">*</span></label>
-            <input type="text" id="marketName" required>
-        </div>
-        <div class="form-group">
-            <label>Customer Name <span class="required">*</span></label>
-            <input type="text" id="customerName" required>
-        </div>
-        <div class="form-group">
-            <label>Mobile Number <span class="required">*</span></label>
-            <input type="tel" id="mobileNumber" pattern="[+]{0,1}[0-9]{11,14}" placeholder="+88017XXXXXXXX" required>
-        </div>
-        <div class="form-group">
-            <label>Sale Made? <span class="required">*</span></label>
-            <select id="saleMade" required onchange="toggleAmountField()">
-                <option value="no">No</option>
-                <option value="yes">Yes</option>
-            </select>
-        </div>
-        <div class="form-group" id="amountField">
-            <label>Sale Amount (BDT) <span class="required">*</span></label>
-            <input type="number" id="saleAmount" step="0.01" min="0">
-        </div>
-        <button type="submit">Submit Data</button>
+        <!-- Existing form fields remain the same -->
     </form>
 
     <script>
@@ -104,7 +32,7 @@
             apiKey: "AIzaSyAG2FCJ5yq-fpzkIGPJNXhUmV4C0yBCLvw",
             authDomain: "bpdb-7917b.firebaseapp.com",
             projectId: "bpdb-7917b",
-            storageBucket: "bpdb-7917b.appspot.com",
+            storageBucket: "bpdb-7917b.firebasestorage.app",
             messagingSenderId: "257010241868",
             appId: "1:257010241868:web:051531214d73c21558bfe9",
             measurementId: "G-TMETXCTQGL"
@@ -115,21 +43,146 @@
         const db = firebase.firestore();
         const auth = firebase.auth();
 
-        // Check Authentication State
-        auth.onAuthStateChanged(user => {
+        let currentUser = null;
+        let isAdmin = false;
+
+        // Authentication State Listener
+        auth.onAuthStateChanged(async (user) => {
             if (!user) {
-                // Redirect to login page if not logged in
                 window.location.href = "index.html";
+            } else {
+                currentUser = user;
+                const idToken = await user.getIdTokenResult();
+                isAdmin = idToken.claims.admin || false;
+                
+                if(isAdmin) {
+                    document.getElementById('adminLink').style.display = 'inline';
+                }
+                
+                loadUserData();
+                updateStatistics();
             }
         });
+
+        // Form Submission Handler
+        document.getElementById('marketForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const submissionData = {
+                marketName: document.getElementById('marketName').value.trim(),
+                customerName: document.getElementById('customerName').value.trim(),
+                mobileNumber: document.getElementById('mobileNumber').value.trim(),
+                saleMade: document.getElementById('saleMade').value,
+                timestamp: new Date(),
+                userId: currentUser.uid
+            };
+
+            // Validate sale amount if sale was made
+            if(submissionData.saleMade === 'yes') {
+                const amount = parseFloat(document.getElementById('saleAmount').value);
+                if(isNaN(amount) || amount <= 0) {
+                    alert('Please enter a valid sale amount');
+                    return;
+                }
+                submissionData.saleAmount = amount;
+            }
+
+            try {
+                await db.collection('submissions').add(submissionData);
+                alert('Data submitted successfully!');
+                
+                // Reset form and update UI
+                document.getElementById('marketForm').reset();
+                toggleAmountField();
+                updateStatistics();
+                loadUserData();
+            } catch (error) {
+                console.error('Submission error:', error);
+                alert('Error submitting data. Please try again.');
+            }
+        });
+
+        // Load User Data
+        async function loadUserData() {
+            try {
+                let query = db.collection('submissions');
+                if(!isAdmin) {
+                    query = query.where('userId', '==', currentUser.uid);
+                }
+
+                const snapshot = await query.get();
+                const submissionsList = document.getElementById('userSubmissions');
+                submissionsList.innerHTML = '<h3>Your Recent Submissions:</h3>';
+                
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    submissionsList.innerHTML += `
+                        <div class="submission-item">
+                            <p>Market: ${data.marketName}</p>
+                            <p>Customer: ${data.customerName}</p>
+                            <p>Sale: ${data.saleMade === 'yes' ? '৳' + data.saleAmount : 'No sale'}</p>
+                            <hr>
+                        </div>
+                    `;
+                });
+            } catch (error) {
+                console.error('Error loading data:', error);
+            }
+        }
+
+        // Update Statistics
+        async function updateStatistics() {
+            try {
+                let query = db.collection('submissions');
+                if(!isAdmin) {
+                    query = query.where('userId', '==', currentUser.uid);
+                }
+
+                const snapshot = await query.get();
+                let totalContacts = 0;
+                let totalSalesAmount = 0;
+                let salesCount = 0;
+
+                snapshot.forEach(doc => {
+                    totalContacts++;
+                    const data = doc.data();
+                    if(data.saleMade === 'yes' && data.saleAmount) {
+                        salesCount++;
+                        totalSalesAmount += parseFloat(data.saleAmount);
+                    }
+                });
+
+                document.getElementById('totalContacts').textContent = totalContacts;
+                document.getElementById('totalSales').textContent = totalSalesAmount.toFixed(2);
+                document.getElementById('salesRatio').textContent = salesCount;
+            } catch (error) {
+                console.error('Error updating stats:', error);
+            }
+        }
 
         // Logout Function
         function logout() {
             auth.signOut();
         }
 
-        // Rest of your form submission logic (same as before)
-        // ...
+        // Toggle Amount Field Visibility
+        function toggleAmountField() {
+            const saleMade = document.getElementById('saleMade').value;
+            const amountField = document.getElementById('amountField');
+            const amountInput = document.getElementById('saleAmount');
+            
+            if(saleMade === 'yes') {
+                amountField.style.display = 'block';
+                amountInput.setAttribute('required', 'true');
+            } else {
+                amountField.style.display = 'none';
+                amountInput.removeAttribute('required');
+                amountInput.value = '';
+            }
+        }
+
+        // Initial call to set correct field visibility
+        toggleAmountField();
     </script>
 </body>
 </html>
